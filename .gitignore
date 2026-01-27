@@ -1,0 +1,28 @@
+# Node modules
+node_modules/
+package-lock.json
+bun.lockb
+
+# Build output
+typescript/dist/
+*.js.map
+*.d.ts.map
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
