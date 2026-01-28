@@ -140,6 +140,11 @@ function M.start_preview()
   vim.api.nvim_buf_set_option(terminal_buf, 'buflisted', false)
   vim.api.nvim_buf_set_name(terminal_buf, 'mark://preview')
   
+  -- Set window-local options for terminal
+  vim.api.nvim_win_set_option(preview_win, 'number', false)
+  vim.api.nvim_win_set_option(preview_win, 'relativenumber', false)
+  vim.api.nvim_win_set_option(preview_win, 'signcolumn', 'no')
+  
   -- Return focus to source window
   vim.api.nvim_set_current_win(source_win)
   
@@ -237,6 +242,19 @@ function M._setup_autocommands()
       local closed_win = tonumber(ev.match)
       if closed_win == state.preview_win then
         M.stop_preview()
+      end
+    end,
+  })
+  
+  -- Auto-enter insert mode when focusing preview window
+  vim.api.nvim_create_autocmd('WinEnter', {
+    group = group,
+    pattern = '*',
+    callback = function()
+      local current_win = vim.api.nvim_get_current_win()
+      if current_win == state.preview_win then
+        -- Enter insert mode in terminal
+        vim.cmd('startinsert')
       end
     end,
   })
