@@ -4,7 +4,7 @@ A beautiful terminal-based markdown preview for Neovim with live rendering, synt
 
 ## ✨ Features
 
-- 🎨 **Beautiful Themes** - GitHub Dark, Monokai, Nord (cycle with `T`)
+- 🎨 **Beautiful Themes** - GitHub Dark, Monokai, Nord, Orng (cycle with `T`)
 - 📊 **Full Markdown Support** - Tables, inline formatting, code blocks
 - 🎯 **Live Preview** - Auto-updates as you type
 - 🔤 **Syntax Highlighting** - Tree-sitter powered code blocks
@@ -59,7 +59,7 @@ use {
 
 | Key | Action |
 |-----|--------|
-| `T` | Cycle themes (GitHub → Monokai → Nord) |
+| `T` | Cycle themes (GitHub → Monokai → Nord → Orng) |
 | `C` | Toggle conceal mode |
 | `R` | Reload file |
 | `S` | Start streaming demo |
@@ -83,12 +83,31 @@ require('mark').setup({
   split_position = 'right',  -- 'right', 'left', 'top', 'bottom'
   split_size = 50,           -- Percentage (1-100)
   auto_start = false,        -- Auto-start on markdown files
+  theme = 'GitHub Dark',     -- 'GitHub Dark', 'Monokai', 'Nord', 'Orng'
   
   mappings = {
     toggle_preview = '<leader>mp',
   },
 })
 ```
+
+### Theme Options
+
+Set your preferred default theme:
+
+```lua
+require('mark').setup({
+  theme = 'Orng',  -- Start with orng theme
+})
+```
+
+Available themes:
+- `'GitHub Dark'` - Clean and familiar (default)
+- `'Monokai'` - Classic and vibrant
+- `'Nord'` - Beautiful Nordic palette
+- `'Orng'` - Warm orange accents
+
+You can still cycle themes in the preview with the `T` key!
 
 ## 🧪 Quick Test
 
@@ -147,7 +166,7 @@ cd typescript && bun run build  # Rebuild if needed
 Neovim (Lua)  ←→  Terminal  ←→  OpenTUI App (TypeScript)
   │                                      │
   ├─ Commands                           ├─ MarkdownRenderable
-  ├─ Window management                  ├─ 3 Themes
+  ├─ Window management                  ├─ 4 Themes
   └─ Auto-save                          ├─ File watching
                                         └─ Keyboard handling
 ```
@@ -157,6 +176,7 @@ Neovim (Lua)  ←→  Terminal  ←→  OpenTUI App (TypeScript)
 **GitHub Dark** - Clean and familiar  
 **Monokai** - Classic and vibrant  
 **Nord** - Beautiful Nordic palette  
+**Orng** - Warm orange accents with excellent contrast  
 
 Switch between them instantly with `T` key!
 

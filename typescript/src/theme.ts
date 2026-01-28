@@ -132,9 +132,50 @@ export const NORD_THEME: Theme = {
 };
 
 /**
+ * Orng theme colors (inspired by lucent-orng from OpenCode)
+ * A warm, orange-accented theme with excellent contrast
+ */
+export const ORNG_THEME: Theme = {
+  name: 'Orng',
+  bg: '#1a1a1a',
+  styles: {
+    keyword: { fg: parseColor('#EC5B2B'), bold: true },
+    string: { fg: parseColor('#6ba1e6') },
+    comment: { fg: parseColor('#808080'), italic: true },
+    number: { fg: parseColor('#FFF7F1') },
+    function: { fg: parseColor('#EE7948') },
+    type: { fg: parseColor('#e5c07b') },
+    operator: { fg: parseColor('#56b6c2') },
+    variable: { fg: parseColor('#e06c75') },
+    property: { fg: parseColor('#6ba1e6') },
+    'punctuation.bracket': { fg: parseColor('#eeeeee') },
+    'punctuation.delimiter': { fg: parseColor('#eeeeee') },
+    'markup.heading': { fg: parseColor('#EC5B2B'), bold: true },
+    'markup.heading.1': { fg: parseColor('#EC5B2B'), bold: true, underline: true },
+    'markup.heading.2': { fg: parseColor('#EE7948'), bold: true },
+    'markup.heading.3': { fg: parseColor('#e5c07b') },
+    'markup.bold': { fg: parseColor('#EE7948'), bold: true },
+    'markup.strong': { fg: parseColor('#EE7948'), bold: true },
+    'markup.italic': { fg: parseColor('#e5c07b'), italic: true },
+    'markup.list': { fg: parseColor('#EC5B2B') },
+    'markup.quote': { fg: parseColor('#FFF7F1'), italic: true },
+    'markup.raw': { fg: parseColor('#6ba1e6'), bg: parseColor('#3c3c3c') },
+    'markup.raw.block': { fg: parseColor('#6ba1e6'), bg: parseColor('#3c3c3c') },
+    'markup.raw.inline': { fg: parseColor('#6ba1e6'), bg: parseColor('#3c3c3c') },
+    'markup.link': { fg: parseColor('#EC5B2B'), underline: true },
+    'markup.link.label': { fg: parseColor('#56b6c2'), underline: true },
+    'markup.link.url': { fg: parseColor('#EC5B2B'), underline: true },
+    label: { fg: parseColor('#EE7948') },
+    conceal: { fg: parseColor('#808080') },
+    'punctuation.special': { fg: parseColor('#808080') },
+    default: { fg: parseColor('#eeeeee') },
+  },
+};
+
+/**
  * All available themes
  */
-export const THEMES = [GITHUB_DARK_THEME, MONOKAI_THEME, NORD_THEME];
+export const THEMES = [GITHUB_DARK_THEME, MONOKAI_THEME, NORD_THEME, ORNG_THEME];
 
 /**
  * Create syntax style from theme

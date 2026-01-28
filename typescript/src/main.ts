@@ -7,18 +7,26 @@ import { MarkdownPreviewApp } from './app.js';
  */
 async function main(): Promise<void> {
   const filePath = process.argv[2];
+  const initialTheme = process.argv[3]; // Optional theme name
 
   if (!filePath) {
-    console.error('Usage: bun main.ts <markdown-file>');
+    console.error('Usage: bun main.ts <markdown-file> [theme]');
     console.error('');
     console.error('Examples:');
     console.error('  bun main.ts README.md');
-    console.error('  bun main.ts path/to/document.md');
+    console.error('  bun main.ts path/to/document.md monokai');
+    console.error('  bun main.ts README.md "GitHub Dark"');
+    console.error('');
+    console.error('Available themes:');
+    console.error('  • GitHub Dark (default)');
+    console.error('  • Monokai');
+    console.error('  • Nord');
+    console.error('  • Orng');
     console.error('');
     console.error('Features:');
     console.error('  • Full markdown rendering (tables, inline formatting, etc.)');
     console.error('  • Syntax highlighting for code blocks');
-    console.error('  • 3 themes: GitHub Dark, Monokai, Nord');
+    console.error('  • 4 beautiful themes');
     console.error('  • Conceal mode (hide formatting markers)');
     console.error('  • Streaming mode (simulate live content)');
     console.error('  • Auto file watching');
@@ -27,7 +35,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const app = new MarkdownPreviewApp(filePath);
+  const app = new MarkdownPreviewApp(filePath, {
+    initialTheme: initialTheme,
+  });
 
   try {
     await app.start();

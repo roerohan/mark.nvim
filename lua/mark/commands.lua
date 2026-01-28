@@ -107,9 +107,14 @@ function M.start_preview()
   local terminal_buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_win_set_buf(preview_win, terminal_buf)
   
-  -- Start the OpenTUI app in the terminal
+  -- Start the OpenTUI app in the terminal with theme
+  local theme_arg = cfg.theme and vim.fn.shellescape(cfg.theme) or ''
+  local cmd = theme_arg ~= '' 
+    and string.format('bun %s %s %s', vim.fn.shellescape(app_script), vim.fn.shellescape(file_path), theme_arg)
+    or string.format('bun %s %s', vim.fn.shellescape(app_script), vim.fn.shellescape(file_path))
+  
   local job_id = vim.fn.termopen(
-    string.format('bun %s %s', vim.fn.shellescape(app_script), vim.fn.shellescape(file_path)),
+    cmd,
     {
       on_exit = function(_, exit_code)
         utils.log('OpenTUI app exited with code: ' .. exit_code)

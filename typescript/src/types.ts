@@ -8,6 +8,7 @@ export interface RendererConfig {
   backgroundColor?: string;
   exitOnCtrlC?: boolean;
   useAlternateScreen?: boolean;
+  initialTheme?: string;
 }
 
 /**

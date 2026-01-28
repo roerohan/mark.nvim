@@ -47,7 +47,21 @@ export class MarkdownPreviewApp {
 
   constructor(filePath: string, config: RendererConfig = {}) {
     this.filePath = filePath;
-    this.currentTheme = THEMES[0];
+    
+    // Set initial theme from config or default to first theme
+    if (config.initialTheme) {
+      const themeIndex = THEMES.findIndex(t => t.name.toLowerCase() === config.initialTheme?.toLowerCase());
+      if (themeIndex !== -1) {
+        this.currentThemeIndex = themeIndex;
+        this.currentTheme = THEMES[themeIndex];
+      } else {
+        console.error(`[mark.nvim] Theme "${config.initialTheme}" not found, using default`);
+        this.currentTheme = THEMES[0];
+      }
+    } else {
+      this.currentTheme = THEMES[0];
+    }
+    
     this.config = {
       targetFps: config.targetFps || 60,
       backgroundColor: config.backgroundColor || this.currentTheme.bg,
@@ -211,7 +225,7 @@ export class MarkdownPreviewApp {
     const helpContent = new TextRenderable(this.renderer, {
       id: 'help-content',
       content: `Theme:
-  T : Cycle through themes (GitHub/Monokai/Nord)
+  T : Cycle through themes (GitHub/Monokai/Nord/Orng)
 
 View Controls:
   C : Toggle concealment (hide **, \`, etc.)
