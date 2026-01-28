@@ -1,7 +1,7 @@
-# Node modules
+# Dependencies
 node_modules/
 package-lock.json
-bun.lockb
+# Keep bun.lock for reproducible builds
 
 # Build output
 typescript/dist/

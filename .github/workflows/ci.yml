@@ -8,71 +8,57 @@ on:
 
 jobs:
   lint:
-    name: Lint
+    name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: typescript/package-lock.json
+          bun-version: latest
       
       - name: Install dependencies
         working-directory: typescript
-        run: npm ci
-      
-      - name: Run TypeScript linter
-        working-directory: typescript
-        run: npm run lint
+        run: bun install
       
       - name: Run TypeScript type check
         working-directory: typescript
-        run: npm run typecheck
-
-  test-typescript:
-    name: Test TypeScript
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: typescript/package-lock.json
-      
-      - name: Install dependencies
-        working-directory: typescript
-        run: npm ci
-      
-      - name: Run tests
-        working-directory: typescript
-        run: npm test
+        run: bun run typecheck
 
   build:
-    name: Build
+    name: Build TypeScript
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: typescript/package-lock.json
+          bun-version: latest
       
       - name: Install dependencies
         working-directory: typescript
-        run: npm ci
+        run: bun install
       
       - name: Build TypeScript
         working-directory: typescript
-        run: npm run build
+        run: bun run build
       
       - name: Check build artifacts
         run: test -f typescript/dist/main.js
+
+  lua-lint:
+    name: Lint Lua
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y luarocks
+          sudo luarocks install luacheck
+      
+      - name: Run Luacheck
+        run: luacheck lua/ --globals vim
