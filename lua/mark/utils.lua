@@ -40,12 +40,12 @@ function M.create_split_window(position, size)
   else
     cmd = 'vertical rightbelow new'
   end
-  
+
   vim.cmd(cmd)
   local win = vim.api.nvim_get_current_win()
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_win_set_buf(win, buf)
-  
+
   -- Set window options
   vim.api.nvim_win_set_option(win, 'wrap', true)
   vim.api.nvim_win_set_option(win, 'number', false)
@@ -53,7 +53,7 @@ function M.create_split_window(position, size)
   vim.api.nvim_win_set_option(win, 'cursorline', false)
   vim.api.nvim_win_set_option(win, 'conceallevel', 3)
   vim.api.nvim_win_set_option(win, 'concealcursor', 'nvic')
-  
+
   -- Set buffer options
   vim.api.nvim_buf_set_option(buf, 'buftype', 'nofile')
   vim.api.nvim_buf_set_option(buf, 'bufhidden', 'wipe')
@@ -61,18 +61,18 @@ function M.create_split_window(position, size)
   vim.api.nvim_buf_set_option(buf, 'modifiable', true)
   vim.api.nvim_buf_set_option(buf, 'filetype', 'markdown-preview')
   vim.api.nvim_buf_set_name(buf, 'mark://preview')
-  
+
   -- Add placeholder text
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
     '',
     '  Loading markdown preview...',
     '',
   })
-  
+
   -- Disable line wrapping initially
   vim.api.nvim_buf_set_option(buf, 'wrap', true)
   vim.api.nvim_buf_set_option(buf, 'linebreak', true)
-  
+
   -- Resize window
   if position == 'right' or position == 'left' then
     local total_width = vim.o.columns
@@ -83,7 +83,7 @@ function M.create_split_window(position, size)
     local height = math.floor(total_height * size / 100)
     vim.api.nvim_win_set_height(win, height)
   end
-  
+
   return win, buf
 end
 
@@ -93,7 +93,7 @@ function M.create_floating_window()
   local height = math.floor(vim.o.lines * 0.8)
   local row = math.floor((vim.o.lines - height) / 2)
   local col = math.floor((vim.o.columns - width) / 2)
-  
+
   local buf = vim.api.nvim_create_buf(false, true)
   local win = vim.api.nvim_open_win(buf, true, {
     relative = 'editor',
@@ -104,13 +104,13 @@ function M.create_floating_window()
     style = 'minimal',
     border = 'rounded',
   })
-  
+
   -- Set buffer options
   vim.api.nvim_buf_set_option(buf, 'buftype', 'nofile')
   vim.api.nvim_buf_set_option(buf, 'bufhidden', 'wipe')
   vim.api.nvim_buf_set_option(buf, 'swapfile', false)
   vim.api.nvim_buf_set_name(buf, 'mark://preview')
-  
+
   return win, buf
 end
 
