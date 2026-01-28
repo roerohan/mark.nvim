@@ -16,7 +16,7 @@ local state = {
 -- Debug function to check paths
 function M.debug_info()
   local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1).source:sub(2), ':h:h:h')
-  local app_script = plugin_dir .. '/typescript/dist/opentui-app.js'
+  local app_script = plugin_dir .. '/typescript/dist/main.js'
   
   print('=== mark.nvim Debug Info ===')
   print('Plugin directory: ' .. plugin_dir)
@@ -26,18 +26,7 @@ function M.debug_info()
   if vim.fn.filereadable(app_script) == 1 then
     local timestamp = vim.fn.getftime(app_script)
     print('App script timestamp: ' .. os.date('%Y-%m-%d %H:%M:%S', timestamp))
-    
-    -- Check for version marker
-    local handle = io.popen('grep "FIXED VERSION" ' .. vim.fn.shellescape(app_script))
-    if handle then
-      local result = handle:read('*a')
-      handle:close()
-      if result and result ~= '' then
-        print('Version marker: FOUND (v2.0)')
-      else
-        print('Version marker: NOT FOUND (old code)')
-      end
-    end
+    print('Using new MarkdownRenderable version (v5.0)')
   end
   
   print('Bun available: ' .. tostring(vim.fn.executable('bun') == 1))
@@ -71,7 +60,7 @@ function M.start_preview()
   
   -- Find the OpenTUI app script
   local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1).source:sub(2), ':h:h:h')
-  local app_script = plugin_dir .. '/typescript/dist/opentui-app.js'
+  local app_script = plugin_dir .. '/typescript/dist/main.js'
   
   -- Debug: Log the path being used
   utils.log('Using app script: ' .. app_script)

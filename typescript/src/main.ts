@@ -10,11 +10,25 @@ async function main(): Promise<void> {
 
   if (!filePath) {
     console.error('Usage: bun main.ts <markdown-file>');
+    console.error('');
+    console.error('Examples:');
+    console.error('  bun main.ts README.md');
+    console.error('  bun main.ts path/to/document.md');
+    console.error('');
+    console.error('Features:');
+    console.error('  • Full markdown rendering (tables, inline formatting, etc.)');
+    console.error('  • Syntax highlighting for code blocks');
+    console.error('  • 3 themes: GitHub Dark, Monokai, Nord');
+    console.error('  • Conceal mode (hide formatting markers)');
+    console.error('  • Streaming mode (simulate live content)');
+    console.error('  • Auto file watching');
+    console.error('');
+    console.error('Press ? in the app for full keybindings list');
     process.exit(1);
   }
 
   const app = new MarkdownPreviewApp(filePath);
-  
+
   try {
     await app.start();
   } catch (error) {

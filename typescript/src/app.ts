@@ -1,67 +1,67 @@
-// Main application class for markdown preview
+// Main application class for markdown preview using MarkdownRenderable
 
 import {
   createCliRenderer,
   BoxRenderable,
+  TextRenderable,
+  ScrollBoxRenderable,
+  MarkdownRenderable,
   SyntaxStyle,
-  type CliRenderer
+  type CliRenderer,
+  type ParsedKey,
 } from '@opentui/core';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { Token } from 'marked';
-import { parseMarkdown } from './parser.js';
+import { THEMES, getTheme, createSyntaxStyle, type Theme } from './theme.js';
 import { FileWatcher } from './fileWatcher.js';
-import { GITHUB_DARK_THEME, createSyntaxStyle } from './theme.js';
-import {
-  renderHeading,
-  renderParagraph,
-  renderCode,
-  renderList,
-  renderBlockquote,
-  renderHr,
-  renderTable,
-  renderHeader,
-  renderError,
-} from './renderers/index.js';
-import type {
-  AppState,
-  RendererConfig,
-  RenderContext,
-  ThemeColors,
-} from './types.js';
+import { StreamingManager } from './streaming.js';
+import type { RendererConfig } from './types.js';
 
 /**
- * Main markdown preview application
+ * Main markdown preview application using MarkdownRenderable
  */
 export class MarkdownPreviewApp {
   private renderer: CliRenderer | null = null;
-  private state: AppState;
-  private syntaxStyle: SyntaxStyle;
-  private theme: ThemeColors;
-  private fileWatcher: FileWatcher | null = null;
-  private currentContainer: BoxRenderable | null = null;
+  private filePath: string;
+  private content: string = '';
   private config: RendererConfig;
+  
+  // UI Components
+  private parentContainer: BoxRenderable | null = null;
+  private scrollBox: ScrollBoxRenderable | null = null;
+  private markdownDisplay: MarkdownRenderable | null = null;
+  private statusText: TextRenderable | null = null;
+  private helpModal: BoxRenderable | null = null;
+  
+  // State
+  private currentTheme: Theme;
+  private currentThemeIndex: number = 0;
+  private syntaxStyle: SyntaxStyle;
+  private concealEnabled: boolean = true;
+  private showingHelp: boolean = false;
+  
+  // Features
+  private fileWatcher: FileWatcher | null = null;
+  private streamingManager: StreamingManager | null = null;
+  private keyboardHandler: ((key: ParsedKey) => void) | null = null;
 
   constructor(filePath: string, config: RendererConfig = {}) {
-    this.state = {
-      content: '',
-      filePath: filePath,
-    };
+    this.filePath = filePath;
+    this.currentTheme = THEMES[0];
     this.config = {
-      targetFps: config.targetFps || 30,
-      backgroundColor: config.backgroundColor || GITHUB_DARK_THEME.background,
+      targetFps: config.targetFps || 60,
+      backgroundColor: config.backgroundColor || this.currentTheme.bg,
       exitOnCtrlC: config.exitOnCtrlC ?? true,
       useAlternateScreen: config.useAlternateScreen ?? true,
     };
-    this.syntaxStyle = createSyntaxStyle();
-    this.theme = GITHUB_DARK_THEME;
+    this.syntaxStyle = createSyntaxStyle(this.currentTheme);
   }
 
   /**
    * Initialize and start the application
    */
   async start(): Promise<void> {
-    console.error('[mark.nvim] Starting OpenTUI app v3.0 - REFACTORED VERSION');
+    console.error('[mark.nvim] Starting OpenTUI Markdown Preview');
 
     this.renderer = await createCliRenderer({
       exitOnCtrlC: this.config.exitOnCtrlC,
@@ -70,144 +70,394 @@ export class MarkdownPreviewApp {
       backgroundColor: this.config.backgroundColor,
     });
 
-    await this.loadContent();
-    this.startWatching();
+    this.renderer.start();
 
-    this.renderer.on('resize', () => {
-      this.refreshContent();
-    });
+    await this.loadContent();
+    this.createUI();
+    this.setupKeyboard();
+    this.startWatching();
   }
 
   /**
-   * Load content from the markdown file
+   * Load markdown content from file
    */
   private async loadContent(): Promise<void> {
     try {
-      if (!fs.existsSync(this.state.filePath)) {
-        this.showError(`File not found: ${this.state.filePath}`);
+      if (!fs.existsSync(this.filePath)) {
+        this.content = `# File Not Found\n\nThe file \`${this.filePath}\` does not exist.`;
         return;
       }
 
-      const content = fs.readFileSync(this.state.filePath, 'utf-8');
-      this.state.content = content;
-
-      this.refreshContent();
+      this.content = fs.readFileSync(this.filePath, 'utf-8');
     } catch (error) {
-      this.showError(`Error: ${error}`);
+      this.content = `# Error\n\nFailed to read file: ${error}`;
     }
   }
 
   /**
-   * Refresh the rendered content
+   * Create the UI components
    */
-  private refreshContent(): void {
+  private createUI(): void {
     if (!this.renderer) return;
 
-    this.clearScreen();
+    // Main container
+    this.parentContainer = new BoxRenderable(this.renderer, {
+      id: 'parent-container',
+      zIndex: 10,
+      padding: 1,
+    });
+    this.renderer.root.add(this.parentContainer);
 
-    const parsed = parseMarkdown(this.state.content);
+    // Title box
+    const fileName = path.basename(this.filePath);
+    const titleBox = new BoxRenderable(this.renderer, {
+      id: 'title-box',
+      height: 3,
+      borderStyle: 'double',
+      borderColor: '#4ECDC4',
+      backgroundColor: this.currentTheme.bg,
+      title: `Markdown Preview - ${fileName}`,
+      titleAlignment: 'center',
+      border: true,
+    });
+    this.parentContainer.add(titleBox);
 
-    // Create main container
-    this.currentContainer = new BoxRenderable(this.renderer, {
-      id: 'main-container',
-      width: '100%',
-      height: '100%',
-      flexDirection: 'column',
+    const instructionsText = new TextRenderable(this.renderer, {
+      id: 'instructions',
+      content: 'ESC: Exit | ?: Help',
+      fg: '#888888',
+    });
+    titleBox.add(instructionsText);
+
+    // Create help modal (hidden by default)
+    this.createHelpModal();
+
+    // Scrollable markdown container
+    this.scrollBox = new ScrollBoxRenderable(this.renderer, {
+      id: 'markdown-scroll-box',
+      borderStyle: 'single',
+      borderColor: '#6BCF7F',
+      backgroundColor: this.currentTheme.bg,
+      title: `${this.currentTheme.name}`,
+      titleAlignment: 'left',
+      border: true,
+      scrollY: true,
+      scrollX: false,
+      flexGrow: 1,
+      flexShrink: 1,
       padding: 2,
-      backgroundColor: this.theme.background,
-      shouldFill: true,
+    });
+    this.scrollBox.focus();
+    this.parentContainer.add(this.scrollBox);
+
+    // Create markdown display using MarkdownRenderable
+    this.markdownDisplay = new MarkdownRenderable(this.renderer, {
+      id: 'markdown-display',
+      content: this.content,
+      syntaxStyle: this.syntaxStyle,
+      conceal: this.concealEnabled,
+      width: '100%',
     });
 
-    const context: RenderContext = {
-      renderer: this.renderer,
+    this.scrollBox.add(this.markdownDisplay);
+
+    // Status bar
+    this.statusText = new TextRenderable(this.renderer, {
+      id: 'status-display',
+      content: '',
+      fg: '#A5D6FF',
+      wrapMode: 'word',
+      flexShrink: 0,
+    });
+    this.parentContainer.add(this.statusText);
+
+    // Initialize streaming manager
+    this.streamingManager = new StreamingManager(
+      this.markdownDisplay,
+      this.scrollBox,
+      this.content,
+      (status) => this.updateStreamingStatus(status)
+    );
+
+    this.updateStatus();
+  }
+
+  /**
+   * Create help modal
+   */
+  private createHelpModal(): void {
+    if (!this.renderer) return;
+
+    this.helpModal = new BoxRenderable(this.renderer, {
+      id: 'help-modal',
+      position: 'absolute',
+      left: '50%',
+      top: '50%',
+      width: 60,
+      height: 22,
+      marginLeft: -30,
+      marginTop: -11,
+      border: true,
+      borderStyle: 'double',
+      borderColor: '#4ECDC4',
+      backgroundColor: this.currentTheme.bg,
+      title: 'Keybindings',
+      titleAlignment: 'center',
+      padding: 2,
+      zIndex: 100,
+      visible: false,
+    });
+
+    const helpContent = new TextRenderable(this.renderer, {
+      id: 'help-content',
+      content: `Theme:
+  T : Cycle through themes (GitHub/Monokai/Nord)
+
+View Controls:
+  C : Toggle concealment (hide **, \`, etc.)
+  R : Reload file from disk
+
+Streaming:
+  S : Start/restart streaming simulation
+  E : Toggle endless mode (repeats content forever)
+  X : Stop streaming
+  [ : Decrease speed (slower)
+  ] : Increase speed (faster)
+
+Other:
+  ? : Toggle this help screen
+  ESC : Exit application`,
+      fg: '#E6EDF3',
+    });
+
+    this.helpModal.add(helpContent);
+    this.renderer.root.add(this.helpModal);
+  }
+
+  /**
+   * Update the status bar text
+   */
+  private updateStatus(): void {
+    if (!this.statusText) return;
+
+    const lines = this.content.split('\n').length;
+    const concealStatus = this.concealEnabled ? 'ON' : 'OFF';
+    const theme = this.currentTheme.name;
+    
+    this.statusText.content = `${theme} | Conceal: ${concealStatus} | Lines: ${lines} | Press ? for help`;
+  }
+
+  /**
+   * Update status with streaming info
+   */
+  private updateStreamingStatus(status: string): void {
+    if (!this.statusText) return;
+
+    const concealStatus = this.concealEnabled ? 'ON' : 'OFF';
+    const theme = this.currentTheme.name;
+    
+    this.statusText.content = `${theme} | Conceal: ${concealStatus} | ${status} | Press X to stop`;
+  }
+
+  /**
+   * Setup keyboard event handlers
+   */
+  private setupKeyboard(): void {
+    if (!this.renderer) return;
+
+    this.keyboardHandler = (key: ParsedKey) => {
+      // Toggle help modal
+      if (key.raw === '?' && !key.ctrl && !key.meta) {
+        this.toggleHelp();
+        return;
+      }
+
+      // Don't process other keys when help is showing
+      if (this.showingHelp) return;
+
+      // Exit on ESC
+      if (key.name === 'escape') {
+        this.destroy();
+        process.exit(0);
+      }
+      
+      // Theme cycling with T
+      else if (key.name === 't' && !key.ctrl && !key.meta) {
+        this.cycleTheme();
+      }
+      
+      // Toggle conceal mode with C
+      else if (key.name === 'c' && !key.ctrl && !key.meta) {
+        this.toggleConceal();
+      }
+      
+      // Reload file with R
+      else if (key.name === 'r' && !key.ctrl && !key.meta) {
+        this.reloadContent();
+      }
+      
+      // Streaming controls
+      else if (key.name === 's' && !key.ctrl && !key.meta) {
+        this.startStreaming();
+      }
+      else if (key.name === 'e' && !key.ctrl && !key.meta) {
+        this.toggleEndless();
+      }
+      else if (key.name === 'x' && !key.ctrl && !key.meta) {
+        this.stopStreaming();
+      }
+      else if (key.raw === '[' && !key.ctrl && !key.meta) {
+        this.decreaseStreamSpeed();
+      }
+      else if (key.raw === ']' && !key.ctrl && !key.meta) {
+        this.increaseStreamSpeed();
+      }
     };
 
-    // Render header
-    const fileName = path.basename(this.state.filePath);
-    renderHeader(fileName, this.currentContainer, this.theme);
-
-    // Render markdown tokens
-    for (const token of parsed.tokens) {
-      this.renderToken(token, this.currentContainer, context);
-    }
-
-    // Add to root and render
-    this.renderer.root.add(this.currentContainer);
-    this.renderer.requestRender();
+    this.renderer.keyInput.on('keypress', this.keyboardHandler);
   }
 
   /**
-   * Clear the screen by removing all existing content
+   * Toggle help modal
    */
-  private clearScreen(): void {
-    if (!this.renderer) return;
-
-    // Remove current container
-    if (this.currentContainer) {
-      try {
-        this.renderer.root.remove('main-container');
-        (this.currentContainer as any).destroy?.();
-      } catch (e) {
-        // Ignore cleanup errors
-      }
-      this.currentContainer = null;
-    }
-
-    // Clear orphaned children
-    const existingChildren = this.renderer.root.getChildren();
-    for (const child of existingChildren) {
-      try {
-        if ((child as any).id) {
-          this.renderer.root.remove((child as any).id);
-        }
-        (child as any).destroy?.();
-      } catch (e) {
-        // Ignore cleanup errors
-      }
+  private toggleHelp(): void {
+    this.showingHelp = !this.showingHelp;
+    if (this.helpModal) {
+      this.helpModal.visible = this.showingHelp;
     }
   }
 
   /**
-   * Render a single markdown token
+   * Cycle through themes
    */
-  private renderToken(token: Token, parent: BoxRenderable, context: RenderContext): void {
-    if (!this.renderer) return;
-
-    switch (token.type) {
-      case 'heading':
-        renderHeading(token as any, parent, this.theme);
-        break;
-      case 'paragraph':
-        renderParagraph(token as any, parent, this.theme);
-        break;
-      case 'code':
-        renderCode(token as any, parent, this.theme, this.syntaxStyle, context);
-        break;
-      case 'list':
-        renderList(token as any, parent, this.theme);
-        break;
-      case 'blockquote':
-        renderBlockquote(token as any, parent, this.theme);
-        break;
-      case 'hr':
-        renderHr(parent, this.theme);
-        break;
-      case 'table':
-        renderTable(token as any, parent, this.theme);
-        break;
-      // Add more token types as needed
+  private cycleTheme(): void {
+    this.currentThemeIndex = (this.currentThemeIndex + 1) % THEMES.length;
+    this.currentTheme = getTheme(this.currentThemeIndex);
+    
+    // Update renderer background
+    if (this.renderer) {
+      this.renderer.setBackgroundColor(this.currentTheme.bg);
     }
+    
+    // Update syntax style
+    this.syntaxStyle = createSyntaxStyle(this.currentTheme);
+    
+    if (this.markdownDisplay) {
+      this.markdownDisplay.syntaxStyle = this.syntaxStyle;
+    }
+    
+    if (this.scrollBox) {
+      this.scrollBox.title = this.currentTheme.name;
+      this.scrollBox.backgroundColor = this.currentTheme.bg;
+    }
+    
+    if (this.helpModal) {
+      this.helpModal.backgroundColor = this.currentTheme.bg;
+    }
+    
+    this.updateStatus();
+  }
+
+  /**
+   * Toggle conceal mode
+   */
+  private toggleConceal(): void {
+    // Stop streaming when toggling conceal
+    this.stopStreaming();
+    
+    this.concealEnabled = !this.concealEnabled;
+    
+    if (this.markdownDisplay) {
+      this.markdownDisplay.conceal = this.concealEnabled;
+    }
+    
+    this.updateStatus();
+  }
+
+  /**
+   * Reload content from file
+   */
+  private async reloadContent(): Promise<void> {
+    await this.loadContent();
+    
+    if (this.markdownDisplay) {
+      this.markdownDisplay.content = this.content;
+    }
+    
+    if (this.streamingManager) {
+      this.streamingManager.setContent(this.content);
+    }
+    
+    this.updateStatus();
+  }
+
+  /**
+   * Start streaming mode
+   */
+  private startStreaming(): void {
+    if (this.streamingManager) {
+      this.streamingManager.start();
+    }
+  }
+
+  /**
+   * Stop streaming mode
+   */
+  private stopStreaming(): void {
+    if (this.streamingManager) {
+      this.streamingManager.stop();
+    }
+    this.updateStatus();
+  }
+
+  /**
+   * Toggle endless streaming mode
+   */
+  private toggleEndless(): void {
+    if (this.streamingManager) {
+      this.streamingManager.toggleEndless();
+    }
+    this.updateStatus();
+  }
+
+  /**
+   * Decrease streaming speed
+   */
+  private decreaseStreamSpeed(): void {
+    if (this.streamingManager) {
+      this.streamingManager.decreaseSpeed();
+    }
+    this.updateStatus();
+  }
+
+  /**
+   * Increase streaming speed
+   */
+  private increaseStreamSpeed(): void {
+    if (this.streamingManager) {
+      this.streamingManager.increaseSpeed();
+    }
+    this.updateStatus();
   }
 
   /**
    * Start watching the file for changes
    */
   private startWatching(): void {
-    this.fileWatcher = new FileWatcher(this.state.filePath, {
+    this.fileWatcher = new FileWatcher(this.filePath, {
       interval: 500,
-      onUpdate: (content: string) => {
-        this.state.content = content;
-        this.refreshContent();
+      onUpdate: async (content: string) => {
+        this.content = content;
+        
+        if (this.markdownDisplay && !this.streamingManager?.isActive()) {
+          this.markdownDisplay.content = content;
+        }
+        
+        if (this.streamingManager) {
+          this.streamingManager.setContent(content);
+        }
+        
+        this.updateStatus();
       },
     });
 
@@ -215,27 +465,46 @@ export class MarkdownPreviewApp {
   }
 
   /**
-   * Display an error message
-   */
-  private showError(message: string): void {
-    if (!this.renderer) return;
-
-    this.clearScreen();
-
-    const errorBox = renderError(message, this.theme);
-    this.renderer.root.add(errorBox);
-    this.renderer.requestRender();
-  }
-
-  /**
-   * Clean up resources
+   * Clean up resources and destroy the application
    */
   destroy(): void {
+    // Stop streaming
+    if (this.streamingManager) {
+      this.streamingManager.destroy();
+      this.streamingManager = null;
+    }
+
+    // Stop file watcher
     if (this.fileWatcher) {
       this.fileWatcher.stop();
+      this.fileWatcher = null;
     }
+
+    // Remove keyboard handler
+    if (this.keyboardHandler && this.renderer) {
+      this.renderer.keyInput.off('keypress', this.keyboardHandler);
+      this.keyboardHandler = null;
+    }
+
+    // Destroy UI components
+    if (this.helpModal) {
+      this.helpModal.destroy();
+      this.helpModal = null;
+    }
+
+    if (this.parentContainer) {
+      this.parentContainer.destroy();
+      this.parentContainer = null;
+    }
+
+    this.scrollBox = null;
+    this.markdownDisplay = null;
+    this.statusText = null;
+
+    // Destroy renderer
     if (this.renderer) {
       this.renderer.destroy();
+      this.renderer = null;
     }
   }
 }

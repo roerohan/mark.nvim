@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "start": "bun dist/main.js",
     "test": "bun test",
     "test:opentui": "./test-opentui.sh",
     "lint": "eslint src/**/*.ts",

@@ -14,4 +14,4 @@ echo ""
 nvim -c "set rtp+=." \
      -c "lua require('mark').setup()" \
      -c "MarkPreview" \
-     tests/test_example.md
+     tests/demo.md
