@@ -8,7 +8,7 @@ A beautiful terminal-based markdown preview for Neovim with live rendering, synt
 - 📊 **Full Markdown Support** - Tables, inline formatting, code blocks
 - 🎯 **Live Preview** - Auto-updates as you type
 - 🔤 **Syntax Highlighting** - Tree-sitter powered code blocks
-- 👁️ **Conceal Mode** - Hide formatting markers (toggle with `C`)
+- 👀 **Conceal Mode** - Hide formatting markers (toggle with `C`)
 - 🚀 **Streaming Demo** - Watch content appear in real-time
 - 💻 **Terminal Native** - No browser, works in tmux/ssh
 
