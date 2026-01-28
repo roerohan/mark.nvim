@@ -189,6 +189,5 @@ Contributions welcome! Please:
 ## 🙏 Acknowledgments
 
 Built with:
-- [OpenTUI](https://github.com/anomalyco/opentui) - Terminal UI framework
-- [marked](https://marked.js.org/) - Markdown parser
+- [OpenTUI](https://github.com/anomalyco/opentui) - Terminal UI framework with built-in markdown rendering
 - [Bun](https://bun.sh/) - Fast JavaScript runtime
