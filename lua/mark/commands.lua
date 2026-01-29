@@ -5,18 +5,188 @@ local M = {}
 local config = require('mark.config')
 local utils = require('mark.utils')
 
+-- State management
 local state = {
   preview_win = nil,
   preview_buf = nil,
   terminal_job_id = nil,
   source_buf = nil,
   mode = 'preview',
+  stopping = false,
+  stopped_job_ids = {},
 }
 
--- Debug function to check paths
-function M.debug_info()
-  local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1).source:sub(2), ':h:h:h')
+-- Exit code constants
+local EXIT_CODE = {
+  CLEAN = 0,
+  SIGTERM = 143,
+  SIGTERM_ALT = 15,
+}
+
+-- Private helper functions
+
+local function is_sigterm(exit_code)
+  return exit_code == EXIT_CODE.SIGTERM or exit_code == EXIT_CODE.SIGTERM_ALT
+end
+
+local function get_plugin_paths()
+  local plugin_dir = vim.fn.fnamemodify(debug.getinfo(2).source:sub(2), ':h:h:h')
   local app_script = plugin_dir .. '/typescript/dist/main.js'
+  return plugin_dir, app_script
+end
+
+local function validate_environment()
+  if vim.fn.executable('bun') == 0 then
+    vim.notify(
+      'mark.nvim: Bun runtime not found. Please install Bun from https://bun.sh',
+      vim.log.levels.ERROR
+    )
+    return false
+  end
+  return true
+end
+
+local function validate_file(file_path)
+  if file_path == '' then
+    vim.notify(
+      'mark.nvim: Buffer has no file path. Please save the file first (:w)',
+      vim.log.levels.ERROR
+    )
+    return false
+  end
+
+  if vim.fn.filereadable(file_path) == 0 then
+    vim.notify(
+      'mark.nvim: File does not exist on disk. Please save the file first (:w)',
+      vim.log.levels.ERROR
+    )
+    return false
+  end
+
+  return true
+end
+
+local function validate_app_script(app_script, plugin_dir)
+  if vim.fn.filereadable(app_script) == 0 then
+    vim.notify('mark.nvim: OpenTUI app not found at: ' .. app_script, vim.log.levels.ERROR)
+    vim.notify(
+      'mark.nvim: Please run: cd ' .. plugin_dir .. '/typescript && bun install && bun run build',
+      vim.log.levels.ERROR
+    )
+    return false
+  end
+  return true
+end
+
+local function get_split_command(position)
+  local commands = {
+    right = 'rightbelow vsplit',
+    left = 'leftabove vsplit',
+    top = 'leftabove split',
+    bottom = 'rightbelow split',
+  }
+  return commands[position] or commands.right
+end
+
+local function resize_window(win, position, size)
+  if position == 'right' or position == 'left' then
+    local total_width = vim.o.columns
+    local preview_width = math.floor(total_width * size / 100)
+    vim.api.nvim_win_set_width(win, preview_width)
+  else
+    local total_height = vim.o.lines
+    local preview_height = math.floor(total_height * size / 100)
+    vim.api.nvim_win_set_height(win, preview_height)
+  end
+end
+
+local function create_preview_window(cfg)
+  local split_cmd = get_split_command(cfg.split_position)
+  vim.cmd(split_cmd)
+  
+  local preview_win = vim.api.nvim_get_current_win()
+  resize_window(preview_win, cfg.split_position, cfg.split_size)
+  
+  return preview_win
+end
+
+local function setup_terminal_buffer(preview_win)
+  local terminal_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_win_set_buf(preview_win, terminal_buf)
+  
+  -- Set buffer options
+  vim.api.nvim_buf_set_option(terminal_buf, 'bufhidden', 'wipe')
+  vim.api.nvim_buf_set_option(terminal_buf, 'buflisted', false)
+  vim.api.nvim_buf_set_name(terminal_buf, 'mark://preview')
+  
+  return terminal_buf
+end
+
+local function setup_window_options(preview_win)
+  vim.api.nvim_win_set_option(preview_win, 'number', false)
+  vim.api.nvim_win_set_option(preview_win, 'relativenumber', false)
+  vim.api.nvim_win_set_option(preview_win, 'signcolumn', 'no')
+end
+
+local function build_terminal_command(app_script, file_path, theme)
+  local escaped_app = vim.fn.shellescape(app_script)
+  local escaped_file = vim.fn.shellescape(file_path)
+  
+  if theme and theme ~= '' then
+    local escaped_theme = vim.fn.shellescape(theme)
+    return string.format('bun %s %s %s', escaped_app, escaped_file, escaped_theme)
+  else
+    return string.format('bun %s %s', escaped_app, escaped_file)
+  end
+end
+
+local function handle_job_exit(job_id_exit, exit_code)
+  -- Ignore exit callbacks for jobs we intentionally stopped
+  if state.stopped_job_ids[job_id_exit] then
+    state.stopped_job_ids[job_id_exit] = nil
+    print(string.format('[mark.nvim] Ignoring exit for stopped job %d', job_id_exit))
+    return
+  end
+  
+  -- Don't handle exit if we're currently stopping (prevents recursion)
+  if state.stopping then
+    return
+  end
+  
+  state.terminal_job_id = nil
+  
+  -- Log exit based on exit code
+  if exit_code == EXIT_CODE.CLEAN then
+    print('[mark.nvim] Preview closed by user')
+  elseif is_sigterm(exit_code) then
+    print('[mark.nvim] Preview stopped')
+  else
+    vim.schedule(function()
+      vim.notify(
+        string.format('[mark.nvim] Preview crashed with exit code: %d. Check :messages for details.', exit_code),
+        vim.log.levels.ERROR
+      )
+    end)
+  end
+  
+  -- Cleanup the preview window
+  vim.schedule(function()
+    if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
+      M.stop_preview()
+    end
+  end)
+end
+
+local function cleanup_state()
+  state.preview_win = nil
+  state.preview_buf = nil
+  state.source_buf = nil
+end
+
+-- Public API functions
+
+function M.debug_info()
+  local plugin_dir, app_script = get_plugin_paths()
 
   print('=== mark.nvim Debug Info ===')
   print('Plugin directory: ' .. plugin_dir)
@@ -33,8 +203,8 @@ function M.debug_info()
   print('===========================')
 end
 
--- Start preview mode with OpenTUI
 function M.start_preview()
+  -- Early validation checks
   if not utils.is_markdown_buffer() then
     vim.notify('mark.nvim: Not a markdown buffer', vim.log.levels.WARN)
     return
@@ -45,38 +215,23 @@ function M.start_preview()
     return
   end
 
-  -- Check if bun is available
-  if vim.fn.executable('bun') == 0 then
-    vim.notify(
-      'mark.nvim: Bun runtime not found. Please install Bun from https://bun.sh',
-      vim.log.levels.ERROR
-    )
+  -- Clear stopping flag when starting new preview
+  state.stopping = false
+
+  -- Validate environment
+  if not validate_environment() then
     return
   end
 
-  -- Get the markdown file path
+  -- Validate file
   local file_path = vim.api.nvim_buf_get_name(0)
-  if file_path == '' then
-    vim.notify('mark.nvim: Buffer has no file path', vim.log.levels.ERROR)
+  if not validate_file(file_path) then
     return
   end
 
-  -- Find the OpenTUI app script
-  local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1).source:sub(2), ':h:h:h')
-  local app_script = plugin_dir .. '/typescript/dist/main.js'
-
-  -- Debug: Log the path being used
-  utils.log('Using app script: ' .. app_script)
-  utils.log(
-    'App timestamp: ' .. os.date('%Y-%m-%d %H:%M:%S', vim.fn.getftime(app_script))
-  )
-
-  if vim.fn.filereadable(app_script) == 0 then
-    vim.notify('mark.nvim: OpenTUI app not found at: ' .. app_script, vim.log.levels.ERROR)
-    vim.notify(
-      'mark.nvim: Please run: cd ' .. plugin_dir .. '/typescript && bun install && bun run build',
-      vim.log.levels.ERROR
-    )
+  -- Validate app script
+  local plugin_dir, app_script = get_plugin_paths()
+  if not validate_app_script(app_script, plugin_dir) then
     return
   end
 
@@ -84,63 +239,15 @@ function M.start_preview()
   local source_win = vim.api.nvim_get_current_win()
   state.source_buf = vim.api.nvim_get_current_buf()
 
-  -- Create split window
+  -- Create and configure preview window
   local cfg = config.get()
-  local split_cmd
-  if cfg.split_position == 'right' then
-    split_cmd = 'rightbelow vsplit'
-  elseif cfg.split_position == 'left' then
-    split_cmd = 'leftabove vsplit'
-  elseif cfg.split_position == 'top' then
-    split_cmd = 'leftabove split'
-  else
-    split_cmd = 'rightbelow split'
-  end
+  local preview_win = create_preview_window(cfg)
+  local terminal_buf = setup_terminal_buffer(preview_win)
+  setup_window_options(preview_win)
 
-  vim.cmd(split_cmd)
-
-  -- Get the new window and set its size
-  local preview_win = vim.api.nvim_get_current_win()
-  if cfg.split_position == 'right' or cfg.split_position == 'left' then
-    local total_width = vim.o.columns
-    local preview_width = math.floor(total_width * cfg.split_size / 100)
-    vim.api.nvim_win_set_width(preview_win, preview_width)
-  else
-    local total_height = vim.o.lines
-    local preview_height = math.floor(total_height * cfg.split_size / 100)
-    vim.api.nvim_win_set_height(preview_win, preview_height)
-  end
-
-  -- Open terminal with OpenTUI app
-  local terminal_buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_win_set_buf(preview_win, terminal_buf)
-
-  -- Start the OpenTUI app in the terminal with theme
-  local theme_arg = cfg.theme and vim.fn.shellescape(cfg.theme) or ''
-  local cmd = theme_arg ~= ''
-    and string.format(
-      'bun %s %s %s',
-      vim.fn.shellescape(app_script),
-      vim.fn.shellescape(file_path),
-      theme_arg
-    )
-    or string.format('bun %s %s', vim.fn.shellescape(app_script), vim.fn.shellescape(file_path))
-
-  local job_id = vim.fn.termopen(
-    cmd,
-    {
-      on_exit = function(_, exit_code)
-        utils.log('OpenTUI app exited with code: ' .. exit_code)
-        state.terminal_job_id = nil
-        -- Auto-close preview if app exits
-        if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
-          vim.schedule(function()
-            M.stop_preview()
-          end)
-        end
-      end,
-    }
-  )
+  -- Start terminal with OpenTUI app
+  local cmd = build_terminal_command(app_script, file_path, cfg.theme)
+  local job_id = vim.fn.termopen(cmd, { on_exit = handle_job_exit })
 
   if job_id <= 0 then
     vim.notify('mark.nvim: Failed to start OpenTUI app', vim.log.levels.ERROR)
@@ -148,20 +255,11 @@ function M.start_preview()
     return
   end
 
+  -- Update state
   state.preview_win = preview_win
   state.preview_buf = terminal_buf
   state.terminal_job_id = job_id
   state.mode = 'preview'
-
-  -- Set buffer options
-  vim.api.nvim_buf_set_option(terminal_buf, 'bufhidden', 'wipe')
-  vim.api.nvim_buf_set_option(terminal_buf, 'buflisted', false)
-  vim.api.nvim_buf_set_name(terminal_buf, 'mark://preview')
-
-  -- Set window-local options for terminal
-  vim.api.nvim_win_set_option(preview_win, 'number', false)
-  vim.api.nvim_win_set_option(preview_win, 'relativenumber', false)
-  vim.api.nvim_win_set_option(preview_win, 'signcolumn', 'no')
 
   -- Return focus to source window
   vim.api.nvim_set_current_win(source_win)
@@ -169,33 +267,40 @@ function M.start_preview()
   -- Setup autocommands
   M._setup_autocommands()
 
-  utils.log('Preview started with OpenTUI')
   vim.notify('mark.nvim: Preview started. File changes will auto-reload.', vim.log.levels.INFO)
 end
 
--- Stop preview mode
 function M.stop_preview()
+  -- Prevent recursive calls
+  if state.stopping then
+    return
+  end
+  state.stopping = true
+
+  -- Stop terminal job
   if state.terminal_job_id then
-    -- Send Ctrl+C to the terminal to gracefully exit OpenTUI
-    vim.fn.jobstop(state.terminal_job_id)
+    state.stopped_job_ids[state.terminal_job_id] = true
+    pcall(vim.fn.jobstop, state.terminal_job_id)
     state.terminal_job_id = nil
   end
 
+  -- Close preview window
   if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
-    vim.api.nvim_win_close(state.preview_win, true)
+    pcall(vim.api.nvim_win_close, state.preview_win, true)
   end
 
-  state.preview_win = nil
-  state.preview_buf = nil
-  state.source_buf = nil
+  -- Clear state
+  cleanup_state()
 
   -- Clear autocommands
   pcall(vim.api.nvim_clear_autocmds, { group = 'MarkNvim' })
 
-  utils.log('Preview stopped')
+  -- Reset stopping flag after delay
+  vim.defer_fn(function()
+    state.stopping = false
+  end, 200)
 end
 
--- Toggle preview mode
 function M.toggle_preview()
   if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
     M.stop_preview()
@@ -204,24 +309,19 @@ function M.toggle_preview()
   end
 end
 
--- Refresh preview by sending signal to OpenTUI app
 function M.refresh_preview()
-  -- The OpenTUI app watches the file automatically
-  -- Just save the buffer to trigger a refresh
   if state.source_buf and vim.api.nvim_buf_is_valid(state.source_buf) then
     vim.cmd('silent write')
     vim.notify('mark.nvim: Preview refreshed', vim.log.levels.INFO)
   end
 end
 
--- Setup autocommands for auto-save on changes
 function M._setup_autocommands()
   local group = vim.api.nvim_create_augroup('MarkNvim', { clear = true })
-
-  -- Auto-save on text change (debounced) to trigger file watcher
   local timer = vim.loop.new_timer()
   local pending = false
 
+  -- Auto-save on text change (debounced)
   vim.api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI' }, {
     group = group,
     buffer = state.source_buf,
@@ -232,8 +332,7 @@ function M._setup_autocommands()
       timer:start(500, 0, vim.schedule_wrap(function()
         pending = false
         if vim.api.nvim_buf_is_valid(state.source_buf) then
-          -- Auto-save to trigger OpenTUI reload
-          vim.cmd('silent write')
+          pcall(vim.cmd, 'silent write')
         end
       end))
     end,
@@ -271,7 +370,6 @@ function M._setup_autocommands()
     callback = function()
       local current_win = vim.api.nvim_get_current_win()
       if current_win == state.preview_win then
-        -- Enter insert mode in terminal
         vim.cmd('startinsert')
       end
     end,

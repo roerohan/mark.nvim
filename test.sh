@@ -12,6 +12,6 @@ echo "  <leader>mp         - Toggle preview (keymap)"
 echo ""
 
 nvim -c "set rtp+=." \
-     -c "lua require('mark').setup()" \
+     -c "lua require('mark').setup({ mappings = { toggle_preview = '<leader>mx' }})" \
      -c "MarkPreview" \
      tests/demo.md
