@@ -103,22 +103,22 @@ end
 local function create_preview_window(cfg)
   local split_cmd = get_split_command(cfg.split_position)
   vim.cmd(split_cmd)
-  
+
   local preview_win = vim.api.nvim_get_current_win()
   resize_window(preview_win, cfg.split_position, cfg.split_size)
-  
+
   return preview_win
 end
 
 local function setup_terminal_buffer(preview_win)
   local terminal_buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_win_set_buf(preview_win, terminal_buf)
-  
+
   -- Set buffer options
   vim.api.nvim_buf_set_option(terminal_buf, 'bufhidden', 'wipe')
   vim.api.nvim_buf_set_option(terminal_buf, 'buflisted', false)
   vim.api.nvim_buf_set_name(terminal_buf, 'mark://preview')
-  
+
   return terminal_buf
 end
 
@@ -131,7 +131,7 @@ end
 local function build_terminal_command(app_script, file_path, theme)
   local escaped_app = vim.fn.shellescape(app_script)
   local escaped_file = vim.fn.shellescape(file_path)
-  
+
   if theme and theme ~= '' then
     local escaped_theme = vim.fn.shellescape(theme)
     return string.format('bun %s %s %s', escaped_app, escaped_file, escaped_theme)
@@ -147,14 +147,14 @@ local function handle_job_exit(job_id_exit, exit_code)
     print(string.format('[mark.nvim] Ignoring exit for stopped job %d', job_id_exit))
     return
   end
-  
+
   -- Don't handle exit if we're currently stopping (prevents recursion)
   if state.stopping then
     return
   end
-  
+
   state.terminal_job_id = nil
-  
+
   -- Log exit based on exit code
   if exit_code == EXIT_CODE.CLEAN then
     print('[mark.nvim] Preview closed by user')
@@ -162,13 +162,14 @@ local function handle_job_exit(job_id_exit, exit_code)
     print('[mark.nvim] Preview stopped')
   else
     vim.schedule(function()
-      vim.notify(
-        string.format('[mark.nvim] Preview crashed with exit code: %d. Check :messages for details.', exit_code),
-        vim.log.levels.ERROR
+      local msg = string.format(
+        '[mark.nvim] Preview crashed with exit code: %d. Check :messages for details.',
+        exit_code
       )
+      vim.notify(msg, vim.log.levels.ERROR)
     end)
   end
-  
+
   -- Cleanup the preview window
   vim.schedule(function()
     if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
