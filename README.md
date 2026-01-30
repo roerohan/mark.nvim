@@ -2,6 +2,8 @@
 
 A beautiful terminal-based markdown preview for Neovim with live rendering, syntax highlighting, and no browser required.
 
+![screenshot](./images/screenshot.png)
+
 ## ✨ Features
 
 - 🎨 **Beautiful Themes** - GitHub Dark, Monokai, Nord, Orng (cycle with `T`)
